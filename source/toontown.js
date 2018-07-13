@@ -1,7 +1,8 @@
-import fetch from "node-fetch";
 import "babel-polyfill";
+
+import fetch from "node-fetch";
 import fuzzy from "fuzzy";
-// import _ from "lodash"
+import _ from "lodash";
 
 const invasionAPIEndpoint = "https://www.toontownrewritten.com/api/invasions";
 
@@ -19,19 +20,8 @@ const findByKey = function(key, value, array) {
     }
   }
 };
-const intersection = function(a, b) {
-  // returns an array of the elements in a that are also in b
-  // assumes a and b each contain all unique elements
-  let array = [];
-  for (const element of a) {
-    if (b.includes(element)) {
-      array.push(element);
-    }
-  }
-  return array;
-};
 const intersectRatio = function(a, b) {
-  return intersection(a, b).length / (a.length || 1);
+  return _.intersection(a, b).length / (a.length || 1);
 };
 const formatPercentage = function(number) {
   return Math.round(100 * number) + "%";
@@ -42,13 +32,7 @@ const fuzz = function(query, list) {
     return element.string;
   })[0];
 };
-const generateStreet = function(
-  name,
-  neighborhood,
-  frequencies,
-  minimum,
-  maximum
-) {
+const generateStreet = (name, neighborhood, frequencies, minimum, maximum) => {
   // return a street object, makes the code below a lot more concise
   return {
     name: name,
@@ -59,15 +43,15 @@ const generateStreet = function(
       cashbot: frequencies[2],
       sellbot: frequencies[3]
     },
-    levels: range(minimum, maximum)
+    levels: _.range(minimum, maximum + 1)
   };
 };
-const generateCog = function(name, type, minimum, maximum) {
+const generateCog = (name, type, minimum, maximum) => {
   // return a cog object
   return {
     name: name,
     type: type,
-    levels: range(minimum, maximum)
+    levels: _.range(minimum, maximum + 1)
   };
 };
 
