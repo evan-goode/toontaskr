@@ -61,6 +61,7 @@ export default {
           street,
           invasion,
           score: score({
+            cogs,
             street,
             cog,
             neighborhood,
