@@ -1,24 +1,42 @@
 <template lang="html">
   <section>
-    <select name="cog" v-model="selected.cog" autofocus>
-      <option value>Any cog</option>
-      <option v-for="cog in cogs" v-bind:value="cog">{{cog.name}}</option>
+    <select autofocus name="cogSelector" v-model="selected.cogSelector">
+      <option v-for="cogSelector in cogSelectors" :value="cogSelector">
+        {{cogSelector.name}}
+      </option>
     </select>
-    <select name="neighborhood" v-model="selected.neighborhood">
-      <option value>Any neighborhood</option>
-      <option v-for="neighborhood in neighborhoods" v-bind:value="neighborhood">{{neighborhood}}</option>
+    <select name="neighborhoodSelector" v-model="selected.neighborhoodSelector">
+      <option
+        v-for="neighborhoodSelector in neighborhoodSelectors"
+        :value="neighborhoodSelector">
+        {{neighborhoodSelector.name}}
+      </option>
     </select>
     <select name="minimum" v-model="selected.minimum">
-      <option v-for="minimum in minima" v-bind:disabled="minimum > selected.maximum"v-bind:value="minimum">{{minimum}}</option>
+      <option
+        v-for="minimum in minima"
+        :disabled="minimum > selected.maximum"
+        :value="minimum">
+        {{minimum}}
+      </option>
     </select>
     <select name="maximum" v-model="selected.maximum">
-      <option v-for="maximum in maxima" v-bind:disabled="maximum < selected.minimum" v-bind:value="maximum">{{maximum}}</option>
+      <option
+        v-for="maximum in maxima"
+        :disabled="maximum < selected.minimum"
+        :value="maximum">
+        {{maximum}}
+      </option>
     </select>
     <p>Best streets:</p>
     <ol v-if="bestStreets.length">
       <li v-for="scoredStreet in bestStreets">
         <p>{{scoredStreet.street.name}}: {{scoredStreet.score}}</p>
-        <p v-if="scoredStreet.invasion">{{scoredStreet.invasion.cog.name}} invasion in {{scoredStreet.invasion.district}}: {{scoredStreet.invasion.progress}}</p>
+        <p v-if="scoredStreet.invasion">
+          {{scoredStreet.invasion.cog.name}} invasion in
+          {{scoredStreet.invasion.district}}:
+          {{formatProgress(scoredStreet.invasion.progress)}} complete
+        </p>
       </li>
     </ol>
     <p v-else>No streets match your query</p>
@@ -31,22 +49,26 @@ import {
   MINIMUM_LEVEL,
   MAXIMUM_LEVEL,
   INVASION_API_ENDPOINT,
-  POLL_INTERVAL
+  INVALID_API_CHARACTERS,
+  POLL_INTERVAL,
+  SELECTOR_TYPES
 } from "../constants";
-import cogs from "../cogs";
-import streets, { neighborhoods } from "../streets";
+const { COG } = SELECTOR_TYPES;
+import cogSelectors from "../cogSelectors";
+import streets, { neighborhoodSelectors } from "../streets";
+
 import { score } from "../toontown";
 
 export default {
   name: "App",
   data: () => ({
-    cogs,
-    neighborhoods,
+    cogSelectors,
+    neighborhoodSelectors,
     minima: _.range(MAXIMUM_LEVEL, MINIMUM_LEVEL - 1),
     maxima: _.range(MAXIMUM_LEVEL, MINIMUM_LEVEL - 1),
     selected: {
-      cog: "",
-      neighborhood: "",
+      cogSelector: _.head(cogSelectors),
+      neighborhoodSelector: _.head(neighborhoodSelectors),
       minimum: MINIMUM_LEVEL,
       maximum: MAXIMUM_LEVEL
     },
@@ -54,17 +76,21 @@ export default {
   }),
   computed: {
     bestStreets: function() {
-      const { cog, neighborhood, minimum, maximum } = this.selected;
+      const {
+        cogSelector,
+        neighborhoodSelector,
+        minimum,
+        maximum
+      } = this.selected;
       const { invasions } = this;
-      const scoredStreetsByInvasion = [...invasions, null].map(invasion =>
+      const scoredStreetsByInvasion = [null, ...invasions].map(invasion =>
         streets.map(street => ({
           street,
           invasion,
           score: score({
-            cogs,
             street,
-            cog,
-            neighborhood,
+            cogSelector,
+            neighborhoodSelector,
             invasion,
             minimum,
             maximum
@@ -73,10 +99,21 @@ export default {
       );
       return _.flatten(scoredStreetsByInvasion)
         .filter(scoredStreet => scoredStreet.score)
-        .sort((a, b) => b.score - a.score || +!!b.invasion - +!!a.invasion);
+        .sort((a, b) => {
+          const scoreDifference = b.score - a.score;
+          if (scoreDifference) return scoreDifference;
+          const getInvasionRemaining = scoredStreet =>
+            (scoredStreet.invasion &&
+              scoredStreet.invasion.progress.total -
+                scoredStreet.invasion.progress.defeated) ||
+            0;
+          return getInvasionRemaining(b) - getInvasionRemaining(a);
+        });
     }
   },
   methods: {
+    formatProgress: progress =>
+      `${Math.round((100 * progress.defeated) / progress.total)}%`,
     updateInvasions: async function() {
       const response = await fetch(INVASION_API_ENDPOINT);
       const json = await response.json();
@@ -84,12 +121,20 @@ export default {
         throw json.error;
       }
       this.invasions = Object.keys(json.invasions).map(district => {
-        const name = json.invasions[district].type.replace("\u0003", "");
-        const cog = cogs.find(cog => name === cog.name);
+        const name = json.invasions[district].type
+          .split("")
+          .filter(character => !INVALID_API_CHARACTERS.includes(character))
+          .join("");
+        const cog = cogSelectors.find(
+          cogSelector => cogSelector.type === COG && name === cogSelector.name
+        );
+        const [defeated, total] = json.invasions[district].progress
+          .split("/")
+          .map(string => +string);
         return {
           district,
           cog,
-          progress: json.invasions[district].progress
+          progress: { defeated, total }
         };
       });
     }

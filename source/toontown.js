@@ -1,5 +1,9 @@
 import _ from "lodash";
 
+import cogSelectors from "./cogSelectors";
+import { SELECTOR_TYPES } from "./constants";
+const { COG, DEPARTMENT, NEIGHBORHOOD, WILDCARD } = SELECTOR_TYPES;
+
 // returns an array of the levels that an invading cog could have on the given
 // street
 const getInvasionAvailableLevels = (cog, street) => {
@@ -23,16 +27,20 @@ const getInvasionAvailableLevels = (cog, street) => {
 // no reason to believe that the TTR developers have sinced changed the spawning
 // algorithm.
 export const score = ({
-  cogs,
   street,
-  cog,
-  neighborhood,
+  cogSelector,
+  neighborhoodSelector,
   invasion,
   minimum,
   maximum
 }) => {
   // If we are in the wrong neighborhood, then the score is zero.
-  if (neighborhood && neighborhood !== street.neighborhood) return 0;
+  if (
+    neighborhoodSelector.type === NEIGHBORHOOD &&
+    neighborhoodSelector.name !== street.neighborhood.name
+  ) {
+    return 0;
+  }
 
   // the specified level range
   const desiredLevels = _.range(minimum, maximum + 1);
@@ -40,12 +48,13 @@ export const score = ({
   if (invasion) {
     // If the invading cog is different from the specified cog, then the score
     // is zero.
-    if (cog) {
-      if (cog.isSpecies) {
-        if (cog.name !== invasion.cog.name) return 0;
-      } else {
-        if (cog.type !== invasion.cog.type) return 0;
-      }
+    if (cogSelector.type === COG && cogSelector.name !== invasion.cog.name) {
+      return 0;
+    } else if (
+      cogSelector.type === DEPARTMENT &&
+      cogSelector.department !== invasion.cog.department
+    ) {
+      return 0;
     }
 
     const availableLevels = getInvasionAvailableLevels(invasion.cog, street);
@@ -60,18 +69,18 @@ export const score = ({
     // There is no invasion.
 
     // If the specified cog is a building-only cog, then the score is zero.
-    if (cog && cog.isBuildingCog) return 0;
+    if (cogSelector.isBuildingOnlyCog) return 0;
 
     // the levels that the specified cog could have on the specified street
     // If no cog is specified, availableLevels represents the levels any cog
     // could have on the specified street.
     const availableLevels = _.intersection(
-      ..._.compact([cog && cog.levels, street.levels])
+      ..._.compact([cogSelector.levels, street.levels])
     );
 
     // If there are no levels that the specified cog could have on the specified
     // street, then the score is zero.
-    if (availableLevels.length === 0) return 0;
+    if (!availableLevels.length) return 0;
     const desiredAvailableLevels = _.intersection(
       availableLevels,
       desiredLevels
@@ -79,45 +88,46 @@ export const score = ({
 
     // If there is no intersection between the desired level range and the
     // available level range, then the score is zero.
-    if (desiredAvailableLevels.length === 0) return 0;
+    if (!desiredAvailableLevels.length) return 0;
 
-    if (cog) {
-      // the probability that a spawned cog will belong to the specified
-      // department
-      const typeProbability = cog ? street.frequencies[cog.type] : 1;
+    const typeProbability =
+      cogSelector.type === WILDCARD
+        ? 1
+        : street.frequencies[cogSelector.department];
 
-      if (cog.isSpecies) {
-        // Get the number of possible species-level combinations given that a
-        // spawning cog belongs to the specified department.
-        const allCombinationsLength = cogs
-          .filter(other => other.type === cog.type)
-          .reduce(
-            (sum, other) =>
-              sum + _.intersection(other.levels, street.levels).length,
-            0
-          );
+    const scorers = {};
+    scorers[COG] = () => {
+      // Get the number of possible species-level combinations given that a
+      // spawning cog belongs to the specified department.
+      const allCombinationsLength = cogSelectors
+        .filter(
+          other =>
+            other.type === COG && other.department === cogSelector.department
+        )
 
-        // Return typeProbability multiplied by the proportion of possible
-        // species-level combinations that are within the specified parameters
-        return (
-          typeProbability *
-          (desiredAvailableLevels.length / allCombinationsLength)
+        // A reduce probably uses less memory than storing each combination
+        // and then counting them.
+        .reduce(
+          (sum, other) =>
+            sum + _.intersection(other.levels, street.levels).length,
+          0
         );
-      } else {
-        // The specified cog is a department.
-        // TODO restructure as a cogSelector object, this grouping of cogs and
-        // departments is unclear
-        // Return typeProbability multiplied by the proportion of spawnable cog
-        // levels that are within the specified range.
-        return (
-          typeProbability *
-          (desiredAvailableLevels.length / street.levels.length)
-        );
-      }
-    } else {
-      // No cog was specified. Return the proportion of spawnable cog levels
-      // that are within the specified range.
-      return desiredAvailableLevels.length / street.levels.length;
-    }
+
+      // Return typeProbability multiplied by the proportion of possible
+      // species-level combinations that are within the specified parameters
+      return (
+        typeProbability *
+        (desiredAvailableLevels.length / allCombinationsLength)
+      );
+    };
+    scorers[DEPARTMENT] = () =>
+      // Return typeProbability multiplied by the proportion of spawnable cog
+      // levels that are within the specified range.
+      typeProbability * (desiredAvailableLevels.length / street.levels.length);
+    scorers[WILDCARD] = () =>
+      // Return the proportion of spawnable cog levels that are within the
+      // specified range.
+      desiredAvailableLevels.length / street.levels.length;
+    return scorers[cogSelector.type]();
   }
 };
