@@ -1,4 +1,4 @@
-<template lang="html">
+<template>
   <section>
     <select autofocus name="cogSelector" v-model="selected.cogSelector">
       <option v-for="cogSelector in cogSelectors" :value="cogSelector">
@@ -31,7 +31,7 @@
     <p>Best streets:</p>
     <ol v-if="bestStreets.length">
       <li v-for="scoredStreet in bestStreets">
-        <p>{{scoredStreet.street.name}}: {{scoredStreet.score}}</p>
+        <p>{{scoredStreet.street.name}} ({{scoredStreet.street.neighborhood.name}}): {{(100 * scoredStreet.score).toFixed(1)}}%</p>
         <p v-if="scoredStreet.invasion">
           {{scoredStreet.invasion.cog.name}} invasion in
           {{scoredStreet.invasion.district}}:
@@ -52,12 +52,12 @@ import {
   INVALID_API_CHARACTERS,
   POLL_INTERVAL,
   SELECTOR_TYPES
-} from "../constants";
+} from "./constants";
 const { COG } = SELECTOR_TYPES;
-import cogSelectors from "../cogSelectors";
-import streets, { neighborhoodSelectors } from "../streets";
+import cogSelectors from "./cogSelectors";
+import streets, { neighborhoodSelectors } from "./streets";
 
-import { score } from "../toontown";
+import { score } from "./toontown";
 
 export default {
   name: "App",
